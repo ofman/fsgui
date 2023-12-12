@@ -38,6 +38,24 @@ func bgDownloadWorker(inputStr string) (string, error) {
 	}
 }
 
+func bgUploadWorker(inputStr string) (strReturn string, errReturn error) {
+	// c1 := make(chan string)
+	// c2 := make(chan error)
+	// go filesharego.UploadFiles(inputStr, false)
+
+	// select {
+	// case cidStr := <-c1:
+	// 	fmt.Println("Content successfully uploaded to:\n", cidStr)
+	// 	return "Content successfully uploaded to:\n" + cidStr, nil
+	// case err := <-c2:
+	// 	fmt.Println("error: ", err)
+	// 	return err.Error(), err
+	// }
+
+	cidStr, err := filesharego.UploadFiles(inputStr, false)
+	return cidStr, err
+}
+
 func main() {
 	myApp := app.New()
 	myWindow := myApp.NewWindow("FileShareGo UI")
@@ -67,7 +85,8 @@ func main() {
 		label.SetText("Content successfully saved:\n" + cidStr + ".txt")
 	})
 	buttonDownload := widget.NewButtonWithIcon("Download content", theme.DownloadIcon(), func() {
-		msgReturned, err := bgDownloadWorker(input.Text)
+		// msgReturned, err := bgDownloadWorker(input.Text)
+		msgReturned, err := filesharego.DownloadFromCid(input.Text, false)
 		filesharego.ErrorCheck(err, false)
 		label.SetText(msgReturned)
 
@@ -81,17 +100,26 @@ func main() {
 
 	// fileInfo := fyne.URIReadCloser()
 	dialogFile := dialog.NewFileOpen(func(readThis fyne.URIReadCloser, err error) {
-		cidStr, err := filesharego.UploadFiles(readThis.URI().Path(), false)
-		filesharego.ErrorCheck(err, false)
 
-		myWindow.Clipboard().SetContent(cidStr)
-		fmt.Printf("Content successfully seeding: %s\n", readThis.URI().Path())
-		label.SetText("Content successfully seeding:\n" + readThis.URI().Path() + "\nCopy and share this CID address below:")
-		input.SetText(cidStr)
+		go func() {
+			// Do the background work.
+			result, err := bgUploadWorker(readThis.URI().Path())
 
-		buttonCopy.Show()
-		buttonSave.Show()
-		buttonDownload.Show()
+			if err != nil {
+				// Handle error.
+				filesharego.ErrorCheck(err, false)
+				return
+			}
+
+			// Update the UI with the result.
+			fmt.Printf("Content successfully uploaded and seeding: %s\n", result)
+			label.SetText("Content successfully uploaded and seeding:\n" + result + "\nCopy and share this CID address below:")
+
+			buttonCopy.Show()
+			buttonSave.Show()
+			buttonDownload.Show()
+		}()
+
 	}, myWindow)
 
 	dialogFolder := dialog.NewFolderOpen(func(readThis fyne.ListableURI, err error) {
@@ -99,8 +127,8 @@ func main() {
 		filesharego.ErrorCheck(err, false)
 
 		myWindow.Clipboard().SetContent(cidStr)
-		fmt.Printf("Content successfully seeding: %s\n", readThis.Path())
-		label.SetText("Content successfully seeding:\n" + readThis.Path() + "\nCopy and share this CID address below:")
+		fmt.Printf("Content successfully uploaded and seeding: %s\n", readThis.Path())
+		label.SetText("Content successfully uploaded and seeding:\n" + readThis.Path() + "\nCopy and share this CID address below:")
 		input.SetText(cidStr)
 
 		buttonCopy.Show()
