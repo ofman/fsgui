@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -12,48 +15,26 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/cheggaaa/pb/v3"
 	"github.com/ofman/filesharego"
 )
 
-func bgDownloadWorker(inputStr string) (string, error) {
-	c1 := make(chan string)
-	c2 := make(chan error)
-	go filesharego.DownloadFromCid(inputStr, false)
+// Mock function to simulate downloading data with progress updates
+func DownloadWithProgress(w io.Writer, cid string, progress chan<- int64) error {
+	totalSize := int64(100) // Replace with actual total size
+	bar := pb.Full.Start64(totalSize)
+	bar.SetWriter(ioutil.Discard) // Discard the default output
 
-	select {
-	// will have to fix timer in the future to check for seeders
-	// case <-time.After(10 * time.Second):
-	// 	// if c2 == nil {
-	// 	fmt.Println("Download taking more than 10 seconds. No seeders?")
-	// 	return "Download taking more than 10 seconds. No seeders?", nil
-	// 	// } else {
-	// 	// 	return "", nil
-	// 	// }
-	case outputPath := <-c1:
-		fmt.Println("Content successfully downloaded to:\n", outputPath)
-		return "Content successfully downloaded to:\n" + outputPath, nil
-	case err := <-c2:
-		fmt.Println("error: ", err)
-		return err.Error(), err
+	for i := int64(0); i < totalSize; i++ {
+		time.Sleep(50 * time.Millisecond) // Simulate time taken to download data
+		w.Write([]byte("data"))           // Write data to provided writer
+		bar.Increment()
+		progress <- i + 1 // Send progress update
 	}
-}
 
-func bgUploadWorker(inputStr string) (strReturn string, errReturn error) {
-	// c1 := make(chan string)
-	// c2 := make(chan error)
-	// go filesharego.UploadFiles(inputStr, false)
-
-	// select {
-	// case cidStr := <-c1:
-	// 	fmt.Println("Content successfully uploaded to:\n", cidStr)
-	// 	return "Content successfully uploaded to:\n" + cidStr, nil
-	// case err := <-c2:
-	// 	fmt.Println("error: ", err)
-	// 	return err.Error(), err
-	// }
-
-	cidStr, err := filesharego.UploadFiles(inputStr, false)
-	return cidStr, err
+	bar.Finish()
+	close(progress)
+	return nil
 }
 
 func main() {
@@ -64,6 +45,9 @@ func main() {
 
 	input := widget.NewEntry()
 	input.SetPlaceHolder("Paste your CID address here...")
+
+	progress := widget.NewProgressBar()
+	infinite := widget.NewProgressBarInfinite()
 
 	// label2 := widget.NewLabel("or")
 
@@ -85,10 +69,34 @@ func main() {
 		label.SetText("Content successfully saved:\n" + cidStr + ".txt")
 	})
 	buttonDownload := widget.NewButtonWithIcon("Download content", theme.DownloadIcon(), func() {
-		// msgReturned, err := bgDownloadWorker(input.Text)
-		msgReturned, err := filesharego.DownloadFromCid(input.Text, false)
+		// Create channels to receive the results
+		msgReturnedChan := make(chan string)
+		errChan := make(chan error)
+		progressChan := make(chan int64)
+
+		// Run the function in a goroutine
+		go func() {
+			msgReturned, err, progressReturned := filesharego.DownloadFromCid(input.Text, false)
+			msgReturnedChan <- msgReturned
+			errChan <- err
+			progressChan <- progressReturned
+		}()
+
+		progress.Show()
+
+		go func() {
+			for p := range progressChan {
+				fmt.Printf("\rDownload progress: %d%%", p)
+				progress.SetValue(float64(p))
+			}
+			fmt.Println("\nDownload finished")
+		}()
+
+		// Use the results
+		msgReturned := <-msgReturnedChan
+		err := <-errChan
 		filesharego.ErrorCheck(err, false)
-		label.SetText(msgReturned)
+		label.SetText("Content successfully downloaded:\n" + msgReturned)
 
 	})
 
@@ -103,7 +111,7 @@ func main() {
 
 		go func() {
 			// Do the background work.
-			result, err := bgUploadWorker(readThis.URI().Path())
+			cidStr, err := filesharego.UploadFiles(readThis.URI().Path(), false)
 
 			if err != nil {
 				// Handle error.
@@ -112,28 +120,39 @@ func main() {
 			}
 
 			// Update the UI with the result.
-			fmt.Printf("Content successfully uploaded and seeding: %s\n", result)
-			label.SetText("Content successfully uploaded and seeding:\n" + result + "\nCopy and share this CID address below:")
+			fmt.Printf("Content successfully uploaded and seeding: %s\n", readThis.URI().Path()+"\nCopy and share this CID address below:\n"+cidStr)
+			label.SetText("Content successfully uploaded and seeding:\n" + readThis.URI().Path() + "\nCopy and share this CID address below:")
+			input.SetText(cidStr)
 
 			buttonCopy.Show()
 			buttonSave.Show()
 			buttonDownload.Show()
+			infinite.Show()
 		}()
 
 	}, myWindow)
 
 	dialogFolder := dialog.NewFolderOpen(func(readThis fyne.ListableURI, err error) {
-		cidStr, err := filesharego.UploadFiles(readThis.Path(), false)
-		filesharego.ErrorCheck(err, false)
+		go func() {
+			// Do the background work.
+			cidStr, err := filesharego.UploadFiles(readThis.Path(), false)
 
-		myWindow.Clipboard().SetContent(cidStr)
-		fmt.Printf("Content successfully uploaded and seeding: %s\n", readThis.Path())
-		label.SetText("Content successfully uploaded and seeding:\n" + readThis.Path() + "\nCopy and share this CID address below:")
-		input.SetText(cidStr)
+			if err != nil {
+				// Handle error.
+				filesharego.ErrorCheck(err, false)
+				return
+			}
 
-		buttonCopy.Show()
-		buttonSave.Show()
-		buttonDownload.Show()
+			// Update the UI with the result.
+			fmt.Printf("Content successfully uploaded and seeding: %s\n", readThis.Path()+"\nCopy and share this CID address below:\n"+cidStr)
+			label.SetText("Content successfully uploaded and seeding:\n" + readThis.Path() + "\nCopy and share this CID address below:")
+			input.SetText(cidStr)
+
+			buttonCopy.Show()
+			buttonSave.Show()
+			buttonDownload.Show()
+			infinite.Show()
+		}()
 	}, myWindow)
 
 	buttonPaste := widget.NewButtonWithIcon("Paste", theme.ContentPasteIcon(), func() {
@@ -164,8 +183,10 @@ func main() {
 	buttonCopy.Hide()
 	buttonSave.Hide()
 	buttonDownload.Hide()
+	progress.Hide()
+	infinite.Hide()
 
-	content2 := container.NewVBox(label, input, buttonPaste, buttonCopy, buttonSave, buttonDownload, buttonsUpload)
+	content2 := container.NewVBox(label, input, buttonPaste, buttonCopy, buttonSave, buttonDownload, buttonsUpload, progress, infinite)
 	myWindow.SetContent(content2)
 	myWindow.Resize(fyne.NewSize(700, 500))
 	myWindow.ShowAndRun()

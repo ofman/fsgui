@@ -159,13 +159,13 @@ This is an example of how to list things you need to use the software and how to
 ## Usage
 
 Use flags -f "example.jpg" or -c "exampleCid" to share files for example:
-Upload file:
+Upload file (keep terminal window open/running to let others download):
    ```sh
-   ./fsg -f example.jpg
+   ./fsgui -f example.jpg
    ```
-Download file:
+Download file (open new terminal window):
    ```sh
-   ./fsg -c /ipfs/QmX4zdEUtimXgxhpzv8jfFLqkuutNhmoNH987cH5RS67GM
+   ./fsgui -c /ipfs/QmX4zdEUtimXgxhpzv8jfFLqkuutNhmoNH987cH5RS67GM
    ```
 
 _For more examples, please refer to the [Documentation](https://oofman.github.com/fsg-site)_
