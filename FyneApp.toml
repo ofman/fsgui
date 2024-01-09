@@ -1,0 +1,8 @@
+Website = "https://github.com/ofman/fsgui"
+
+[Details]
+  Icon = "img/logo.png"
+  Name = "fsgui"
+  ID = "com.github.ofman.fsgui"
+  Version = "0.0.1"
+  Build = 1
