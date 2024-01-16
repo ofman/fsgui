@@ -110,9 +110,7 @@ Of course, no one program will serve all projects since your needs may be differ
 <!-- GETTING STARTED -->
 ## Getting Started
 
-Only need 1 binary file "fsg" to run which can be quickly downloaded from releases section: https://github.com/ofman/fsgui/releases/latest
-
-To get a local copy up and running follow these simple example steps.
+Download and run: https://github.com/ofman/fsgui/releases/latest
 
 ### Prerequisites
 
